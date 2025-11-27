@@ -1,35 +1,26 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O2
+CFLAGS = -Wall
 
-PIPE = pipe_example
-FIFO_WRITER = fifo_writer
-FIFO_READER = fifo_reader
+all: pipe_example fifo_writer fifo_reader
 
-all: $(PIPE) $(FIFO_WRITER) $(FIFO_READER)
+pipe_example: pipe_example.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-$(PIPE): pipe_example.c
-	$(CC) $(CFLAGS) -o $(PIPE) pipe_example.c
+fifo_writer: fifo_writer.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-$(FIFO_WRITER): fifo_writer.c
-	$(CC) $(CFLAGS) -o $(FIFO_WRITER) fifo_writer.c
+fifo_reader: fifo_reader.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-$(FIFO_READER): fifo_reader.c
-	$(CC) $(CFLAGS) -o $(FIFO_READER) fifo_reader.c
+run_pipe: pipe_example
+	./pipe_example
 
-run_pipe: $(PIPE)
-	@echo "=== Запуск pipe-примера ==="
-	./$(PIPE)
-
-run_fifo: $(FIFO_READER) $(FIFO_WRITER)
-	@echo "=== Запуск FIFO-примера ==="
-	@echo "Откройте два терминала:"
-	@echo "1) В первом: ./$(FIFO_READER)"
-	@echo "2) Во втором: ./$(FIFO_WRITER)"
-	@echo "-------------------------------------------"
+run_fifo: fifo_reader fifo_writer
+	./fifo_reader &
+	sleep 1
+	./fifo_writer
 
 clean:
-	rm -f $(PIPE) $(FIFO_WRITER) $(FIFO_READER)
-	rm -f /tmp/myfifo
-	@echo "Все очищено."
+	rm -f pipe_example fifo_writer fifo_reader /tmp/myfifo
 
-.PHONY: all clean run_pipe run_fifo
+.PHONY: all run_pipe run_fifo clean
