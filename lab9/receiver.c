@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <time.h>
@@ -8,6 +9,9 @@
 #define SHM_KEY 0x1234
 #define SEM_KEY 0x5678
 #define SHM_SIZE 128
+
+int shmid, semid;
+char *shm;
 
 void sem_lock(int semid)
 {
@@ -21,12 +25,24 @@ void sem_unlock(int semid)
     semop(semid, &sb, 1);
 }
 
+void cleanup(int sig)
+{
+    shmdt(shm);
+    shmctl(shmid, IPC_RMID, NULL);
+    semctl(semid, 0, IPC_RMID);
+    printf("\nReceiver: ресурсы удалены\n");
+    exit(0);
+}
+
+
 int main()
 {
-    int shmid = shmget(SHM_KEY, SHM_SIZE, 0666);
-    char* shm = (char*)shmat(shmid, NULL, 0);
+    signal(SIGINT, cleanup);
 
-    int semid = semget(SEM_KEY, 1, 0666);
+    shmid = shmget(SHM_KEY, SHM_SIZE, 0666);
+    shm = (char *)shmat(shmid, NULL, 0);
+
+    semid = semget(SEM_KEY, 1, 0666);
 
     while (1) {
         time_t now = time(NULL);
