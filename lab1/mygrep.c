@@ -3,126 +3,87 @@
 #include <string.h>
 #include <errno.h>
 
-static void print_usage(const char *progname) {
-    fprintf(stderr, "Usage: %s PATTERN [FILE ...]\n", progname);
-}
-
 typedef struct {
-    const char *pattern;
-} GrepOptions;
+    const char *needle;
+} SearchCfg;
 
-static int line_matches(const char *line, const char *pattern) {
-    return strstr(line, pattern) != NULL;
+static void show_help(const char *app) {
+    fprintf(stderr, "Usage: %s PATTERN [FILE ...]\n", app);
 }
 
-static int process_stream(FILE *fp, const char *name, const GrepOptions *opts, int print_filename_prefix) {
-    char *buffer = NULL;
-    size_t buffer_size = 0;
-    size_t len = 0;
-    int c;
-    int matched_any = 0;
+static int contains_pattern(const char *text, const char *pat) {
+    return strstr(text, pat) != NULL;
+}
 
-    while (1) {
-        c = fgetc(fp);
-        if (c == EOF) {
-            if (len > 0) {
-                buffer[len] = '\0';
-                if (line_matches(buffer, opts->pattern)) {
-                    if (print_filename_prefix) {
-                        fprintf(stdout, "%s:", name);
-                    }
-                    fputs(buffer, stdout);
-                    fputc('\n', stdout);
-                    matched_any = 1;
-                }
-                len = 0;
-            }
-            break;
+static int scan_input(FILE *in, const char *src,
+                      const SearchCfg *cfg, int show_name) {
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t nread;
+    int found = 0;
+
+    while ((nread = getline(&line, &cap, in)) != -1) {
+        /* remove CR if present (Windows files) */
+        if (nread > 0 && line[nread - 1] == '\r') {
+            line[nread - 1] = '\0';
         }
 
-        if (len + 1 >= buffer_size) {
-            size_t new_size = buffer_size == 0 ? 256 : buffer_size * 2;
-            char *new_buf = (char*)realloc(buffer, new_size);
-            if (!new_buf) {
-                fprintf(stderr, "mygrep: memory allocation failed\n");
-                free(buffer);
-                return 2;
+        if (contains_pattern(line, cfg->needle)) {
+            if (show_name) {
+                printf("%s:", src);
             }
-            buffer = new_buf;
-            buffer_size = new_size;
-        }
-
-        if (c == '\r') {
-            /* Normalize CRLF to LF: skip CR, handle LF in next iteration */
-            continue;
-        }
-
-        if (c == '\n') {
-            buffer[len] = '\0';
-            if (line_matches(buffer, opts->pattern)) {
-                if (print_filename_prefix) {
-                    fprintf(stdout, "%s:", name);
-                }
-                fputs(buffer, stdout);
-                fputc('\n', stdout);
-                matched_any = 1;
-            }
-            len = 0;
-        } else {
-            buffer[len++] = (char)c;
+            fputs(line, stdout);
+            found = 1;
         }
     }
 
-    if (ferror(fp)) {
-        fprintf(stderr, "mygrep: error reading '%s': %s\n", name, strerror(errno));
-        free(buffer);
+    if (ferror(in)) {
+        fprintf(stderr, "mygrep: read failure '%s': %s\n",
+                src, strerror(errno));
+        free(line);
         return 2;
     }
 
-    free(buffer);
-    return matched_any ? 0 : 1; /* Return 1 if no matches, like grep */
+    free(line);
+    return found ? 0 : 1;
 }
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        print_usage(argv[0]);
+        show_help(argv[0]);
         return 2;
     }
 
-    GrepOptions opts;
-    opts.pattern = argv[1];
+    SearchCfg cfg;
+    cfg.needle = argv[1];
 
-    int argi = 2;
-    int exit_code = 0;
-
-    if (argi >= argc) {
-        /* Read from stdin */
-        int rc = process_stream(stdin, "-", &opts, 0);
-        return rc;
+    if (argc == 2) {
+        return scan_input(stdin, "-", &cfg, 0);
     }
 
-    int num_files = argc - argi;
-    int print_filename_prefix = (num_files > 1);
+    int files = argc - 2;
+    int need_prefix = (files > 1);
+    int status = 0;
 
-    for (; argi < argc; ++argi) {
-        const char *path = argv[argi];
-        if (strcmp(path, "-") == 0) {
-            int rc = process_stream(stdin, "-", &opts, print_filename_prefix);
-            if (rc != 0) exit_code = rc;
+    for (int i = 2; i < argc; i++) {
+        FILE *fp;
+
+        if (strcmp(argv[i], "-") == 0) {
+            status = scan_input(stdin, "-", &cfg, need_prefix);
             continue;
         }
 
-        FILE *fp = fopen(path, "rb");
+        fp = fopen(argv[i], "r");
         if (!fp) {
-            fprintf(stderr, "mygrep: cannot open '%s': %s\n", path, strerror(errno));
-            exit_code = 2;
+            fprintf(stderr, "mygrep: cannot open '%s': %s\n",
+                    argv[i], strerror(errno));
+            status = 2;
             continue;
         }
-        int rc = process_stream(fp, path, &opts, print_filename_prefix);
-        if (rc != 0) exit_code = rc; /* prefer last non-zero */
+
+        status = scan_input(fp, argv[i], &cfg, need_prefix);
         fclose(fp);
     }
 
-    return exit_code;
+    return status;
 }
-
