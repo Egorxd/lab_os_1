@@ -3,73 +3,71 @@
 #include <string.h>
 #include <errno.h>
 
+#define BUF_SIZE 4096
+
 typedef struct {
-    const char *needle;
+    const char *pattern;
 } SearchCfg;
 
-static void show_help(const char *app) {
-    fprintf(stderr, "Usage: %s PATTERN [FILE ...]\n", app);
+static void show_usage(const char *prog) {
+    fprintf(stderr, "Usage: %s PATTERN [FILE ...]\n", prog);
 }
 
-static int contains_pattern(const char *text, const char *pat) {
-    return strstr(text, pat) != NULL;
+static int has_match(const char *line, const char *pat) {
+    return strstr(line, pat) != NULL;
 }
 
-static int scan_input(FILE *in, const char *src,
-                      const SearchCfg *cfg, int show_name) {
-    char *line = NULL;
-    size_t cap = 0;
-    ssize_t nread;
-    int found = 0;
+static int scan_stream(FILE *fp, const char *label,
+                       const SearchCfg *cfg, int show_prefix) {
+    char buffer[BUF_SIZE];
+    int matched = 0;
 
-    while ((nread = getline(&line, &cap, in)) != -1) {
-        /* remove CR if present (Windows files) */
-        if (nread > 0 && line[nread - 1] == '\r') {
-            line[nread - 1] = '\0';
+    while (fgets(buffer, sizeof(buffer), fp)) {
+        size_t len = strlen(buffer);
+        if (len && buffer[len - 1] == '\r') {
+            buffer[len - 1] = '\0';
         }
 
-        if (contains_pattern(line, cfg->needle)) {
-            if (show_name) {
-                printf("%s:", src);
+        if (has_match(buffer, cfg->pattern)) {
+            if (show_prefix) {
+                printf("%s:", label);
             }
-            fputs(line, stdout);
-            found = 1;
+            fputs(buffer, stdout);
+            matched = 1;
         }
     }
 
-    if (ferror(in)) {
-        fprintf(stderr, "mygrep: read failure '%s': %s\n",
-                src, strerror(errno));
-        free(line);
+    if (ferror(fp)) {
+        fprintf(stderr, "mygrep: read error '%s': %s\n",
+                label, strerror(errno));
         return 2;
     }
 
-    free(line);
-    return found ? 0 : 1;
+    return matched ? 0 : 1;
 }
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        show_help(argv[0]);
+        show_usage(argv[0]);
         return 2;
     }
 
     SearchCfg cfg;
-    cfg.needle = argv[1];
+    cfg.pattern = argv[1];
 
     if (argc == 2) {
-        return scan_input(stdin, "-", &cfg, 0);
+        return scan_stream(stdin, "-", &cfg, 0);
     }
 
-    int files = argc - 2;
-    int need_prefix = (files > 1);
-    int status = 0;
+    int files_count = argc - 2;
+    int print_name = (files_count > 1);
+    int exit_code = 0;
 
-    for (int i = 2; i < argc; i++) {
+    for (int i = 2; i < argc; ++i) {
         FILE *fp;
 
         if (strcmp(argv[i], "-") == 0) {
-            status = scan_input(stdin, "-", &cfg, need_prefix);
+            exit_code = scan_stream(stdin, "-", &cfg, print_name);
             continue;
         }
 
@@ -77,13 +75,13 @@ int main(int argc, char **argv) {
         if (!fp) {
             fprintf(stderr, "mygrep: cannot open '%s': %s\n",
                     argv[i], strerror(errno));
-            status = 2;
+            exit_code = 2;
             continue;
         }
 
-        status = scan_input(fp, argv[i], &cfg, need_prefix);
+        exit_code = scan_stream(fp, argv[i], &cfg, print_name);
         fclose(fp);
     }
 
-    return status;
+    return exit_code;
 }
