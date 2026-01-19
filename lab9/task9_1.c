@@ -16,9 +16,10 @@ void* writer_thread(void* arg)
     while (1) {
         sem_wait(&sem);
 
-        snprintf(shared_buf, BUF_SIZE, "Запись номер: %d", counter++);
-        sem_post(&sem);
+        snprintf(shared_buf, BUF_SIZE,
+                 "Запись номер: %d", counter++);
 
+        sem_post(&sem);
         sleep(1);
     }
     return NULL;
@@ -29,13 +30,8 @@ void* reader_thread(void* arg)
     pthread_t tid = pthread_self();
 
     while (1) {
-        sem_wait(&sem);
-
         printf("Reader TID: %lu | Общий массив: %s\n",
                (unsigned long)tid, shared_buf);
-
-        sem_post(&sem);
-        sleep(1);
     }
     return NULL;
 }
