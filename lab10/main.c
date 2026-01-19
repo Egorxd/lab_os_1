@@ -1,4 +1,4 @@
-#define _XOPEN_SOURCE 700   // 🔴 ОБЯЗАТЕЛЬНО для pthread_rwlock
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -65,3 +65,4 @@ int main(void)
     pthread_rwlock_destroy(&rwlock);
     return 0;
 }
+
